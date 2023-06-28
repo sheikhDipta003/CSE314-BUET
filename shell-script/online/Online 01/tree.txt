@@ -1,0 +1,41 @@
+rec()
+{
+    for i in "$1"/*
+    do
+        if [ -d "$i" ]
+        then
+            for((j=1;j<$2;j++))
+            do 
+                echo -n "|  "
+            done
+            read -a arr <<< "$i"
+            echo "|--${arr[@]: -1}"
+            rec "$i" $(($2+1))
+        elif [ -f "$i" ]
+        then
+            if [[ "$i" = *.zip ]]
+            then 
+                unzip -q "$i" -d "$1"
+                name=${i%.zip}
+                rm "$i"
+                for((j=1;j<$2;j++))
+                do 
+                    echo -n "|  "
+                done
+                read -a arr <<< "$name"
+                echo "|--${arr[@]: -1}"
+                rec "$name" $(($2+1))
+            else 
+                for((j=1;j<$2;j++))
+                do 
+                    echo -n "|  "
+                done
+                read -a arr <<< "$i"
+                echo "|--${arr[@]: -1}"
+            fi
+        fi
+    done 
+}
+
+IFS="/"
+rec sample 1

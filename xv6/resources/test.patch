@@ -1,0 +1,36 @@
+diff --git a/Makefile b/Makefile
+index 39a99d7..52d1029 100644
+--- a/Makefile
++++ b/Makefile
+@@ -132,6 +132,7 @@ UPROGS=\
+ 	$U/_grind\
+ 	$U/_wc\
+ 	$U/_zombie\
++	$U/_myprog\
+ 
+ fs.img: mkfs/mkfs README $(UPROGS)
+ 	mkfs/mkfs fs.img README $(UPROGS)
+diff --git a/user/myprog.c b/user/myprog.c
+new file mode 100644
+index 0000000..d9514b8
+--- /dev/null
++++ b/user/myprog.c
+@@ -0,0 +1,18 @@
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "user/user.h"
++
++
++int main()
++{
++   printf("hello world\n");
++   char buf[10];
++   gets(buf, 9);
++   int num = atoi(buf);
++
++
++   printf("%d^2 = %d\n", num, num * num);
++
++
++   return 0;
++}

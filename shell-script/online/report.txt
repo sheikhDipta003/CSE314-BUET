@@ -1,0 +1,7 @@
+total 1
+-rwxrwxrwx 1 dipta dipta   0 Jun 19 22:25 report.txt
+-rwxrwxrwx 1 dipta dipta  12 Jun 18 01:13 parameter.sh
+-rwxrwxrwx 1 dipta dipta 189 Jun 18 01:01 geekfile.txt
+-rwxrwxrwx 1 dipta dipta 250 Jun 18 00:54 somezip.zip
+drwxrwxrwx 1 dipta dipta 512 Jun 15 20:00 Online 01
+-rwxrwxrwx 1 dipta dipta 626 Jun 18 01:07 script.sh

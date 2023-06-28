@@ -1,0 +1,30 @@
+#!/bin/bash 
+
+rec()
+{
+    for i in "$1"/*
+    do
+        if [ -d "$i" ]
+        then
+            rec "$i"
+        elif [ -f "$i" ] && [[ "$i" = *.txt ]]
+        then
+            name=`sed -n '1p' "$i"`
+            country=`sed -n '2p' "$i"`
+            role=`sed -n '4p' "$i"`
+            mkdir -p "players/$country/$role"
+            if [ "$i" = "players/$country/$role/$name.txt" ]
+            then
+                continue
+            fi
+            mv "$i" "players/$country/$role/$name.txt"
+        fi
+    done 
+    st=`ls "$1"`
+    if [ -z "$st" ]
+    then
+        rm -r "$1"
+    fi
+}
+
+rec "players"

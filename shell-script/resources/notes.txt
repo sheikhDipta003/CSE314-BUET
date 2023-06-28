@@ -1,0 +1,17 @@
+shebang: specifies through which program rest of the codes are going to run
+shell script lineates commands with spaces. So, no space in assignment operation.
+Treats everything as a string.
+* is a special char, so it must be escaped (\*) to use as a mult operator.
+Division is integer division, so fraction will not be output.
+
+homework: echo -n, until loop, expr comparison, array
+
+file -> regualar file, dir -> directory file
+
+use /bin/bash in all online-offlines.
+
+$((a=$b+$c)) -> to treat them as numbers, not strings.
+
+$(  (1 + 1) ) -> execute the portion with outer brackets by evaluating the expr with inner brackets
+
+recursive functions, array** -> offlines

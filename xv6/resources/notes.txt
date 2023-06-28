@@ -1,0 +1,45 @@
+kernel/
+- types.h -> typedefs of all data types used in xv6
+- stat.h -> a structure containing file system status and disk device info
+- start.c/timerinit() -> definition of intervals between timer interrupts 
+- syscall.h -> System call numbers are defined as constants
+- trampoline.S
+
+user/
+- user.h -> Declarations of all system calls and library functions
+- usys.pl -> Generates usys.S
+- usys.S -> loads syscall number into a7 register, puts the processor into supervisor mode and calls the function 
+			kernel/trampoline.S/uservec(), then returns to user mode
+
+
+---------------------- System Call --------------------------
+1.	User function calls sleep(100)
+○	It means sleep for 100 timer interrupts. 
+	Timer interrupts have an interval of 0.1 second (interval is defined in kernel/start.c/timerinit). 
+	So, this sleep takes about 10 seconds.
+○	sleep system call takes an int as argument and returns an int, which is found from its declaration in user/user.h, 
+	int sleep(int)
+2.	The system call number of sleep is loaded into the register a7 and a trap is generated.
+○	The definition of the function int sleep(int) is provided in user/usys.S
+○	sleep system call has system call number 13, which is defined as SYS_sleep in kernel/syscall.h
+3.	The trap generated in step 2, puts the processor into supervisor mode and calls the function kernel/trampoline.S/uservec. 
+	This function does some state management (saving state of registers and swapping pagetable) and finally jumps to 
+	kernel/trap.c/usertrap. 
+○	This function does not call usertrap. So, we will never get back to this function again while handling our sleep(100).
+4.	The function kernel/trap.c/usertrap handles the trap based on its cause. As, sleep is a system call, it calls 
+	kernel/syscall.c/syscall.
+○	The cause of a trap is given by r_scause() (supervisor trap cause). If it is 8, then the cause is system call. We will 
+	see other values in later assignments.
+5.	The function kernel/syscall.c/syscall is the single point of contact for handling system calls. It retrieves the system call 
+	number (13 in this case) from the saved (in step 3) value of register a7. Then it calls the handler function corresponding 
+	to the system call number. All system call handlers are saved in an array of function pointers, kernel/syscall.c/syscalls. 
+	In this array, the system call handler for sleep is sys_sleep.
+6.	The function sys_sleep is defined in kernel/sysproc.c. In this function, first the argument to sleep system call is 
+	retrieved. Then it does some work that actually makes the calling process sleep for the given amount of time. It returns -1, 
+	if there is any error, otherwise it returns 0.
+7.	Now, we are again in the kernel/syscall.c/syscall. The returned value of the system call handler (in this case, sys_sleep) 
+	is saved in the register a0.
+8.	Then it returns to kernel/trap.c/usertrap and calls kernel/trap.c/usertrapret.
+9.	In kernel/trap.c/usertrapret, it does some state management and calls kernel/trampoline.S/userret.
+10.	kernel/trampoline.S/userret does some state management (restoring state of registers and swapping pagetable) and returns to 
+	user mode.

@@ -1,0 +1,6 @@
+total 20
+-rwxrwxrwx 1 dipta dipta   127 May 25 13:15 SumTwoNums.cpp
+-rwxrwxrwx 1 dipta dipta 16720 May 25 13:16 a.out
+-rwxrwxrwx 1 dipta dipta     6 May 25 13:16 in.txt
+-rwxrwxrwx 1 dipta dipta     0 May 25 13:19 out.txt
+-rwxrwxrwx 1 dipta dipta    19 May 25 13:14 test.sh

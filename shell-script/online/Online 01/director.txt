@@ -1,0 +1,14 @@
+#!/bin/bash
+
+for i in "movie_data"/*.txt
+do
+    c=0
+    while read -r line
+    do
+        c=$((c+1))
+    done < "$i"
+    c=$((c-1))
+    name=`sed -n "$c"p "$i"`
+    mkdir -p "movie_data/$name"
+    mv "$i" "movie_data/$name"    
+done
