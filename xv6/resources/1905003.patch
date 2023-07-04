@@ -51,7 +51,7 @@ index d021857..ea37288 100644
 +  int arg_t;                   // argument of trace syscall, that is, the syscall it wants to trace
  };
 diff --git a/kernel/syscall.c b/kernel/syscall.c
-index ed65409..bc0e48b 100644
+index ed65409..cc446a2 100644
 --- a/kernel/syscall.c
 +++ b/kernel/syscall.c
 @@ -101,6 +101,9 @@ extern uint64 sys_unlink(void);
@@ -80,13 +80,15 @@ index ed65409..bc0e48b 100644
  void
  syscall(void)
  {
-@@ -138,7 +148,25 @@ syscall(void)
+@@ -138,7 +148,27 @@ syscall(void)
    if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
      // Use num to lookup the system call function for num, call it,
      // and store its return value in p->trapframe->a0
 +    if(num == p->arg_t){    //if 'trace' syscall is called
 +      //print trace results
++      acquire(&p->lock);
 +      printf("pid: %d, syscall: %s, ", p->pid, syscall_names[num-1]);
++      release(&p->lock);
 +    }
 +
 +    uint64 start, end;
@@ -434,10 +436,10 @@ index ee73164..dbdd98b 100644
 +};
 diff --git a/user/history.c b/user/history.c
 new file mode 100644
-index 0000000..098f330
+index 0000000..a9b9160
 --- /dev/null
 +++ b/user/history.c
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,50 @@
 +#include "kernel/param.h"
 +#include "kernel/types.h"
 +#include "kernel/stat.h"
@@ -455,6 +457,10 @@ index 0000000..098f330
 +    for(int i = 1; i <= 23; i++){
 +      struct syscall_stat* ss = malloc(sizeof(struct syscall_stat));
 +      // historyhelp(ss);
++      // if ( history(i) < 0) {
++      //   fprintf(2, "%s: history failed\n", argv[0]);
++      //   exit(1);
++      // }
 +
 +      if ( history(ss, i) < 0) {
 +        fprintf(2, "%s: history failed\n", argv[0]);
@@ -468,6 +474,10 @@ index 0000000..098f330
 +  else{
 +    struct syscall_stat* ss = (struct syscall_stat*) malloc(sizeof(struct syscall_stat));
 +    // historyhelp(ss);
++    // if ( history(i) < 0) {
++    //   fprintf(2, "%s: history failed\n", argv[0]);
++    //   exit(1);
++    // }
 +
 +    if ( history(ss, atoi(argv[1])) < 0) {
 +      fprintf(2, "%s: history failed\n", argv[0]);
