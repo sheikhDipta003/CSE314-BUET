@@ -101,26 +101,21 @@ index 6624bff..db72a67 100644
 +#define DEFAULT_TICKET_COUNT 10
 \ No newline at end of file
 diff --git a/kernel/proc.c b/kernel/proc.c
-index 959b778..839358e 100644
+index 959b778..8471228 100644
 --- a/kernel/proc.c
 +++ b/kernel/proc.c
-@@ -5,6 +5,7 @@
+@@ -5,6 +5,10 @@
  #include "spinlock.h"
  #include "proc.h"
  #include "defs.h"
 +#include "rand.c"
++
++uint count_for_boost = 0;
++int last_scheduled_pid;     //pid of last scheduled process
  
  struct cpu cpus[NCPU];
  
-@@ -12,6 +13,7 @@ struct proc proc[NPROC];
- 
- struct proc *initproc;
- 
-+uint count_for_boost = 0;
- int nextpid = 1;
- struct spinlock pid_lock;
- 
-@@ -55,6 +57,12 @@ procinit(void)
+@@ -55,6 +59,12 @@ procinit(void)
        initlock(&p->lock, "proc");
        p->state = UNUSED;
        p->kstack = KSTACK((int) (p - proc));
@@ -133,7 +128,7 @@ index 959b778..839358e 100644
    }
  }
  
-@@ -124,6 +132,12 @@ allocproc(void)
+@@ -124,6 +134,12 @@ allocproc(void)
  found:
    p->pid = allocpid();
    p->state = USED;
@@ -146,7 +141,7 @@ index 959b778..839358e 100644
  
    // Allocate a trapframe page.
    if((p->trapframe = (struct trapframe *)kalloc()) == 0){
-@@ -320,6 +334,12 @@ fork(void)
+@@ -320,6 +336,12 @@ fork(void)
  
    acquire(&np->lock);
    np->state = RUNNABLE;
@@ -159,12 +154,10 @@ index 959b778..839358e 100644
    release(&np->lock);
  
    return pid;
-@@ -441,34 +461,136 @@ wait(uint64 addr)
- //  - swtch to start running that process.
+@@ -442,33 +464,154 @@ wait(uint64 addr)
  //  - eventually that process transfers control
  //    via swtch back to the scheduler.
-+
-+void
+ void
 +change_Q(struct proc * p){
 +  if((p->given_timeslice != 0) && (p->consumed_time_curr >= p->given_timeslice)){
 +    p->consumed_time_curr = 0;
@@ -203,7 +196,25 @@ index 959b778..839358e 100644
 +  return total;
 +}
 +
- void
++int
++get_process_count(int q){ //returns #process(es) in Queue No. q ; q = {1,2}
++  int total = 0;
++  struct proc *p;
++  for(p = proc; p < &proc[NPROC]; p++)
++  {
++    // acquire(&p->lock);
++    if ( (p->inQ == q) && (p->state == RUNNABLE || p->state == RUNNING) )
++      total++;
++    // release(&p->lock);
++  }
++  return total;
++}
++
++//Online : A2
++//ekta process ke jodi lotery schedule kori provious time slice, next time slice e oi process ke na kore onno process ke korte hobe jodi 1st queue te onek gula process takhe
++//jodi onek gula process na take tahole ager process ke shedule korte hobe
++//submitted offline file ta tei change korte hobe
++void
  scheduler(void)
  {
 +  int pass;     //1 if it is ok to break out of a loop over all the processes
@@ -215,29 +226,23 @@ index 959b778..839358e 100644
 -    // Avoid deadlock by ensuring that devices can interrupt.
      intr_on();
 +    pass = 1;
- 
-     for(p = proc; p < &proc[NPROC]; p++) {
-       acquire(&p->lock);
--      if(p->state == RUNNABLE) {
--        // Switch to chosen process.  It is the process's job
--        // to release its lock and then reacquire it
--        // before jumping back to us.
++
++    for(p = proc; p < &proc[NPROC]; p++) {
++      acquire(&p->lock);
 +
 +      if(p->state == RUNNABLE && p->consumed_time_curr < p->given_timeslice) {
-         p->state = RUNNING;
-         c->proc = p;
++        p->state = RUNNING;
++        c->proc = p;
 +
-         swtch(&c->context, &p->context);
- 
--        // Process is done running for now.
--        // It should have changed its p->state before coming back.
-         c->proc = 0;
++        swtch(&c->context, &p->context);
++
++        c->proc = 0;
 +        pass = 0;
 +        change_Q(p);
-       }
++      }
 +
-       release(&p->lock);
-     }
++      release(&p->lock);
++    }
 +
 +    if(pass == 0) continue;
 +
@@ -252,11 +257,11 @@ index 959b778..839358e 100644
 +
 +    for(p = proc; p < &proc[NPROC]; p++) {
 +      acquire(&p->lock);
-+
+ 
 +      if(p->state == RUNNABLE && p->inQ == 1) {
 +        curr_total += p->tickets_current;
 +
-+        if(curr_total > win_ticket){
++        if( (curr_total > win_ticket) && ((p->pid != last_scheduled_pid) || (p->pid == last_scheduled_pid && get_process_count(1) <= 1)) ){
 +          p->state = RUNNING;
 +          p->given_timeslice = TIME_LIMIT_1;
 +          p->consumed_time_curr = 0;
@@ -264,6 +269,8 @@ index 959b778..839358e 100644
 +
 +          swtch(&c->context, &p->context);
 +
++          last_scheduled_pid = p->pid;
++          // printf("Lottery-scheduling: last scheduled pid = %d\n", p->pid);
 +          c->proc = 0;
 +          pass = 0;
 +          change_Q(p);
@@ -278,32 +285,38 @@ index 959b778..839358e 100644
 +    if(pass == 0) continue;
 +
 +    pass = 1;
-+    for(p = proc; p < &proc[NPROC]; p++) {
-+      acquire(&p->lock);
+     for(p = proc; p < &proc[NPROC]; p++) {
+       acquire(&p->lock);
+-      if(p->state == RUNNABLE) {
+-        // Switch to chosen process.  It is the process's job
+-        // to release its lock and then reacquire it
+-        // before jumping back to us.
 +
 +      if(p->state==RUNNABLE && p->inQ == 2) {
-+        p->state = RUNNING;
+         p->state = RUNNING;
 +        p->given_timeslice = TIME_LIMIT_2;
 +        p->consumed_time_curr = 0;
-+        c->proc = p;
+         c->proc = p;
 +
-+        swtch(&c->context, &p->context);
-+
-+        c->proc = 0;
+         swtch(&c->context, &p->context);
+ 
+-        // Process is done running for now.
+-        // It should have changed its p->state before coming back.
+         c->proc = 0;
 +        pass = 0;
 +        change_Q(p);
-+      }
+       }
 +
-+      release(&p->lock);
+       release(&p->lock);
 +
 +      if(pass == 0 && getTicketCount() > 0) break;
-+    }
+     }
    }
 +
  }
  
  // Switch to scheduler.  Must hold only p->lock
-@@ -680,4 +802,4 @@ procdump(void)
+@@ -680,4 +823,4 @@ procdump(void)
      printf("%d %s %s", p->pid, state, p->name);
      printf("\n");
    }
