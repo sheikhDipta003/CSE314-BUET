@@ -1,12 +1,11 @@
 #include<stdio.h>
 #include<pthread.h>
 #include<semaphore.h>
+#include <unistd.h>
 
 sem_t bin_sem;
 pthread_mutex_t mtx;
 char message[100];
-
-
 
 void * thread_function(void * arg)
 {	
@@ -22,9 +21,7 @@ void * thread_function(void * arg)
 		printf("You entered:%s\n",message);
 		sem_post(&bin_sem);
 		//pthread_mutex_unlock(&mtx);
-	
 	}
-	
 }
 
 int main(void)
