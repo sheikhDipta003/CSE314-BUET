@@ -1,65 +1,85 @@
 Staff 2 has started reading the entry book at time 0. No. of submission = 0
-Student 1 has arrived at PS 1 at time 0
-Student 1 has started printing at PS 1 at time 0
-Student 6 has arrived at PS 2 at time 0
-Student 6 has started printing at PS 2 at time 0
-Student 11 has arrived at PS 3 at time 0
-Student 11 has started printing at PS 3 at time 0
-Student 12 has arrived at PS 4 at time 0
-Student 12 has started printing at PS 4 at time 0
-Student 7 has arrived at PS 3 at time 1
-Student 8 has arrived at PS 4 at time 1
-Student 9 has arrived at PS 1 at time 1
-Student 10 has arrived at PS 2 at time 1
-Student 13 has arrived at PS 1 at time 2
-Student 2 has arrived at PS 2 at time 3
-Student 14 has arrived at PS 2 at time 4
-Student 3 has arrived at PS 3 at time 4
-Student 15 has arrived at PS 3 at time 5
-Staff 1 has started reading the entry book at time 6. No. of submission = 0
+Staff 1 has started reading the entry book at time 1. No. of submission = 0
+Student 1 has arrived at PS 1 at time 2
+Student 1 has started printing at PS 1 at time 2
+Student 6 has arrived at PS 2 at time 2
+Student 6 has started printing at PS 2 at time 2
+Student 11 has arrived at PS 3 at time 2
+Student 11 has started printing at PS 3 at time 2
+Student 7 has arrived at PS 3 at time 3
+Staff 2 has started reading the entry book at time 4. No. of submission = 0
+Student 12 has arrived at PS 4 at time 4
+Student 12 has started printing at PS 4 at time 4
+Student 2 has arrived at PS 2 at time 6
+Student 13 has arrived at PS 1 at time 6
+Student 8 has arrived at PS 4 at time 6
+Staff 1 has started reading the entry book at time 7. No. of submission = 0
+Student 9 has arrived at PS 1 at time 7
+Staff 2 has started reading the entry book at time 8. No. of submission = 0
+Student 3 has arrived at PS 3 at time 8
 Student 4 has arrived at PS 4 at time 8
-Staff 2 has started reading the entry book at time 9. No. of submission = 0
-Student 6 has finished printing at PS 2 at time 10
-Student 11 has finished printing at PS 3 at time 10
-Student 10 has started printing at PS 2 at time 9
-Student 1 has finished printing at PS 1 at time 10
-Student 12 has finished printing at PS 4 at time 10
-Student 7 has started printing at PS 3 at time 9
-Student 9 has started printing at PS 1 at time 9
-Student 8 has started printing at PS 4 at time 9
-Student 5 has arrived at PS 1 at time 12
-Staff 2 has started reading the entry book at time 14. No. of submission = 0
-Student 10 has finished printing at PS 2 at time 19
-Student 7 has finished printing at PS 3 at time 19
-Student 3 has started printing at PS 3 at time 19
-Student 2 has started printing at PS 2 at time 19
-Student 9 has finished printing at PS 1 at time 19
-Student 8 has finished printing at PS 4 at time 19
-Student 4 has started printing at PS 4 at time 19
-Student 13 has started printing at PS 1 at time 19
-Group 2 has started binding at BS 1 at time 20
-Staff 2 has started reading the entry book at time 20. No. of submission = 0
-Staff 2 has started reading the entry book at time 25. No. of submission = 0
-Group 2 has finished binding at BS 1 at time 28
-Student 2 has finished printing at PS 2 at time 29
-Student 3 has finished printing at PS 3 at time 29
-Student 14 has started printing at PS 2 at time 29
-Student 15 has started printing at PS 3 at time 29
-Student 13 has finished printing at PS 1 at time 29
-Student 4 has finished printing at PS 4 at time 29
-Student 5 has started printing at PS 1 at time 29
-Group 2 has submitted the report at time 31
-Staff 1 has started reading the entry book at time 30. No. of submission = 1
-Staff 1 has started reading the entry book at time 34. No. of submission = 1
-Student 14 has finished printing at PS 2 at time 39
-Student 15 has finished printing at PS 3 at time 39
-Group 3 has started binding at BS 1 at time 39
-Student 5 has finished printing at PS 1 at time 39
-Group 1 has started binding at BS 2 at time 39
-Staff 2 has started reading the entry book at time 41. No. of submission = 1
-Staff 2 has started reading the entry book at time 47. No. of submission = 1
-Group 3 has finished binding at BS 1 at time 47
-Group 1 has finished binding at BS 2 at time 47
-Group 3 has submitted the report at time 52
-Group 1 has submitted the report at time 55
-Staff 1 has started reading the entry book at time 56. No. of submission = 3
+Student 14 has arrived at PS 2 at time 9
+Student 10 has arrived at PS 2 at time 9
+Staff 2 has started reading the entry book at time 11. No. of submission = 0
+Student 5 has arrived at PS 1 at time 11
+Student 6 has finished printing at PS 2 at time 12
+Student 11 has finished printing at PS 3 at time 12
+Student 1 has finished printing at PS 1 at time 12
+Student 2 has started printing at PS 2 at time 12
+Student 7 has started printing at PS 3 at time 11
+Student 13 has started printing at PS 1 at time 11
+Staff 1 has started reading the entry book at time 13. No. of submission = 0
+Student 15 has arrived at PS 3 at time 13
+Student 12 has finished printing at PS 4 at time 14
+Student 8 has started printing at PS 4 at time 13
+Staff 2 has started reading the entry book at time 15. No. of submission = 0
+Staff 2 has started reading the entry book at time 18. No. of submission = 0
+Staff 1 has started reading the entry book at time 20. No. of submission = 0
+Student 2 has finished printing at PS 2 at time 22
+Student 7 has finished printing at PS 3 at time 21
+Staff 2 has started reading the entry book at time 22. No. of submission = 0
+Student 3 has started printing at PS 3 at time 21
+Student 14 has started printing at PS 2 at time 21
+Student 13 has finished printing at PS 1 at time 21
+Student 9 has started printing at PS 1 at time 21
+Student 8 has finished printing at PS 4 at time 23
+Student 4 has started printing at PS 4 at time 23
+Staff 1 has started reading the entry book at time 25. No. of submission = 0
+Staff 2 has started reading the entry book at time 27. No. of submission = 0
+Staff 1 has started reading the entry book at time 29. No. of submission = 0
+Student 9 has finished printing at PS 1 at time 31
+Student 14 has finished printing at PS 2 at time 31
+Student 5 has started printing at PS 1 at time 31
+Student 3 has finished printing at PS 3 at time 31
+Student 10 has started printing at PS 2 at time 31
+Student 15 has started printing at PS 3 at time 31
+Staff 2 has started reading the entry book at time 32. No. of submission = 0
+Student 4 has finished printing at PS 4 at time 33
+Staff 1 has started reading the entry book at time 34. No. of submission = 0
+Staff 2 has started reading the entry book at time 36. No. of submission = 0
+Staff 1 has started reading the entry book at time 37. No. of submission = 0
+Staff 2 has started reading the entry book at time 40. No. of submission = 0
+Staff 1 has started reading the entry book at time 41. No. of submission = 0
+Student 10 has finished printing at PS 2 at time 41
+Student 5 has finished printing at PS 1 at time 41
+Student 15 has finished printing at PS 3 at time 41
+Group 2 has started binding at BS 1 at time 42
+Group 1 has started binding at BS 2 at time 42
+Staff 2 has started reading the entry book at time 43. No. of submission = 0
+Staff 1 has started reading the entry book at time 45. No. of submission = 0
+Staff 2 has started reading the entry book at time 49. No. of submission = 0
+Staff 1 has started reading the entry book at time 49. No. of submission = 0
+Group 1 has finished binding at BS 2 at time 50
+Group 2 has finished binding at BS 1 at time 50
+Group 3 has started binding at BS 2 at time 50
+Group 1 has started submitting the report at time 52
+Group 1 has finished submitting the report at time 55
+Group 2 has started submitting the report at time 55
+Group 3 has finished binding at BS 2 at time 58
+Group 2 has finished submitting the report at time 58
+Staff 1 has started reading the entry book at time 58. No. of submission = 2
+Staff 2 has started reading the entry book at time 58. No. of submission = 2
+Group 3 has started submitting the report at time 61
+Group 3 has finished submitting the report at time 64
+Staff 2 has started reading the entry book at time 64. No. of submission = 3
+Staff 1 has started reading the entry book at time 64. No. of submission = 3
