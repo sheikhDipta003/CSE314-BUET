@@ -6,6 +6,8 @@
 
 **/*.mp4
 
+**/*.zip
+
 *.out
 
 **/cmake-build-debug/
