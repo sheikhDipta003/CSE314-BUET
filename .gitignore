@@ -2,6 +2,8 @@
 
 **/.vscode/
 
+**/xv6/resources/offline-4-threading/sample
+
 **/xv6-riscv/
 
 **/*.mp4
