@@ -23,19 +23,32 @@ index 39a99d7..151b273 100644
  fs.img: mkfs/mkfs README $(UPROGS)
  	mkfs/mkfs fs.img README $(UPROGS)
 diff --git a/kernel/defs.h b/kernel/defs.h
-index a3c962b..9397577 100644
+index a3c962b..11f4f21 100644
 --- a/kernel/defs.h
 +++ b/kernel/defs.h
-@@ -106,6 +106,7 @@ void            yield(void);
+@@ -106,6 +106,9 @@ void            yield(void);
  int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
  int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
  void            procdump(void);
-+int             thread_create(void(*fcn)(void*), void *arg, void *stack);
++int             thread_create(uint64 fcn, uint64 arg, uint64 stack);
++int             thread_join(int thread_id);
++void            thread_exit();
  
  // swtch.S
  void            swtch(struct context*, struct context*);
+@@ -165,7 +168,10 @@ void            uvmfirst(pagetable_t, uchar *, uint);
+ uint64          uvmalloc(pagetable_t, uint64, uint64, int);
+ uint64          uvmdealloc(pagetable_t, uint64, uint64);
+ int             uvmcopy(pagetable_t, pagetable_t, uint64);
++int             uvmmirror(pagetable_t, pagetable_t, uint64);
++int             uvmrangemirror(pagetable_t, pagetable_t, uint64, uint64);
+ void            uvmfree(pagetable_t, uint64);
++void            freewalk(pagetable_t);
+ void            uvmunmap(pagetable_t, uint64, uint64, int);
+ void            uvmclear(pagetable_t, uint64);
+ pte_t *         walk(pagetable_t, uint64, int);
 diff --git a/kernel/exec.c b/kernel/exec.c
-index e18bbb6..e51831a 100644
+index e18bbb6..4d585af 100644
 --- a/kernel/exec.c
 +++ b/kernel/exec.c
 @@ -19,120 +19,198 @@ int flags2perm(int flags)
@@ -83,13 +96,13 @@ index e18bbb6..e51831a 100644
 +  // int readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
 +  if(readi(ip, 0, (uint64)&elf, 0, sizeof(elf)) != sizeof(elf)) // Check ELF header
      goto bad;
-+  
-+  //we read in from offset 0 [of the ipnode 'ip'] the elf header into local variable elf that points to a location in kernel-address-space
  
++  //we read in from offset 0 [of the ipnode 'ip'] the elf header into local variable elf that points to a location in kernel-address-space
++
    if(elf.magic != ELF_MAGIC)
      goto bad;
  
-+  //Now, this code is executing within a process, and that process has a virtual address space. If anything goes wrong, we have to return -1 and return to executing the code that is in that virt addr space. 
++  //Now, this code is executing within a process, and that process has a virtual address space. If anything goes wrong, we have to return -1 and return to executing the code that is in that virt addr space.
 +  //But if all ok, we are going to create a new user virtual address space, and load the executable file into that address space. So, now we are going to create that second virtual address space. The local variable pagetable will point to the newly created pagetable.
 +  //The function proc_pagetable() needs to add a trapframe to the top of the new virtual address space and it needs to know which physical page to use for that particular page in the virtual address space.
 +  //The executable file must be loaded into the 'code segment' of this new virtual address space
@@ -108,19 +121,19 @@ index e18bbb6..e51831a 100644
        goto bad;
      if(ph.type != ELF_PROG_LOAD)
        continue;
-+    
++
 +    //when the program is loaded into memory, it will be allocated a memory of size memsz which is at least as large as filesz
      if(ph.memsz < ph.filesz)
        goto bad;
-+    
++
 +    //check overflow, vaddr and memsz are unsigned integers
      if(ph.vaddr + ph.memsz < ph.vaddr)
        goto bad;
-+    
++
 +    //check if the virtual address we will be loading the executable file into is page-aligned
      if(ph.vaddr % PGSIZE != 0)
        goto bad;
-+    
++
      uint64 sz1;
 +
 +    //Allocate PTEs and physical memory to grow virtual address space  from oldsz to
@@ -128,10 +141,10 @@ index e18bbb6..e51831a 100644
 +    // uint64 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
      if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz, flags2perm(ph.flags))) == 0)
        goto bad;
-+    
++
 +    //flags2perm()
 +    //Each user-page is by default user-accessible and readable. With this helper function, we can specify whether this new virtual address space will be writable and/or executable.
-+    
++
 +    //update local variable sz. why??
 +    //Because we are executing A SINGLE PROGRAM DIVIDED INTO MANY PROGRAM SEGMENTS and we have created A SINGLE 'pagetable'/virtual-address-space for the whole program. So, each time this virt addr space grows, we must update its current size, because this will be the oldsize for the next program segment.
      sz = sz1;
@@ -163,15 +176,14 @@ index e18bbb6..e51831a 100644
    if((sz1 = uvmalloc(pagetable, sz, sz + 2*PGSIZE, PTE_W)) == 0)
      goto bad;
    sz = sz1;
--  uvmclear(pagetable, sz-2*PGSIZE);
++
++  //the guard page must be inaccessible to user, so make sure that stack never grows below stackbase
+   uvmclear(pagetable, sz-2*PGSIZE);
 -  sp = sz;
 -  stackbase = sp - PGSIZE;
- 
-+  //the guard page must be inaccessible to user, so make sure that stack never grows below stackbase
-+  uvmclear(pagetable, sz-2*PGSIZE);
 +  sp = sz;                  //top of the stack
 +  stackbase = sp - PGSIZE;  //bottom of the stack
-+  
+ 
 +  //this function is called from syscall sys_exec(), which passes an array, argv, of string pointers that point to the argument strings [originally provided by user] located at seaprate pages in kernel space
    // Push argument strings, prepare rest of stack in ustack.
 +  //STACK GROWS DOWNWARD, THAT IS, FROM A HIGHER ADDRESS TO A LOWER ADDRESS
@@ -185,11 +197,11 @@ index e18bbb6..e51831a 100644
 +    //if stack grows below stackbase, that is, overflows, error
      if(sp < stackbase)
        goto bad;
-+    
++
 +    //copy strings from argv[argc] to sp and update pagetable
      if(copyout(pagetable, sp, argv[argc], strlen(argv[argc]) + 1) < 0)
        goto bad;
-+    
++
 +    //we want to save a pointer to the string just pushed onto the stack, hence the local variable ustack
      ustack[argc] = sp;
    }
@@ -203,7 +215,7 @@ index e18bbb6..e51831a 100644
 +  //if stack grows below stackbase, that is, overflows, error
    if(sp < stackbase)
      goto bad;
-+  
++
 +  //copy strings from array ustack to sp and update pagetable
    if(copyout(pagetable, sp, (char *)ustack, (argc+1)*sizeof(uint64)) < 0)
      goto bad;
@@ -244,16 +256,43 @@ index e18bbb6..e51831a 100644
 +  //since we don't know at which point we got a 'bad' result, check if we have reached far enough to allocate a pagetable. If yes, free that pagetable as well as the data pages of total size 'sz'
    if(pagetable)
      proc_freepagetable(pagetable, sz);
-+  
++
 +  //if inode for the executable file still open
    if(ip){
      iunlockput(ip);
      end_op();
 diff --git a/kernel/proc.c b/kernel/proc.c
-index 959b778..23edded 100644
+index 959b778..c0e7044 100644
 --- a/kernel/proc.c
 +++ b/kernel/proc.c
-@@ -106,6 +106,7 @@ allocpid()
+@@ -13,7 +13,9 @@ struct proc proc[NPROC];
+ struct proc *initproc;
+ 
+ int nextpid = 1;
++int next_mem_id = 1;
+ struct spinlock pid_lock;
++struct spinlock mem_id_lock;
+ 
+ extern void forkret(void);
+ static void freeproc(struct proc *p);
+@@ -102,10 +104,24 @@ allocpid()
+   return pid;
+ }
+ 
++int
++allocmemid()
++{
++  int mem_id;
++  
++  acquire(&mem_id_lock);
++  mem_id = next_mem_id;
++  next_mem_id = next_mem_id + 1;
++  release(&mem_id_lock);
++
++  return mem_id;
++}
++
+ // Look in the process table for an UNUSED proc.
  // If found, initialize state required to run in the kernel,
  // and return with p->lock held.
  // If there are no free procs, or a memory allocation fails, return 0.
@@ -261,20 +300,33 @@ index 959b778..23edded 100644
  static struct proc*
  allocproc(void)
  {
-@@ -131,9 +132,12 @@ found:
+@@ -123,6 +139,7 @@ allocproc(void)
+ 
+ found:
+   p->pid = allocpid();
++  p->mem_id = allocmemid();
+   p->state = USED;
+ 
+   // Allocate a trapframe page.
+@@ -131,18 +148,29 @@ found:
      release(&p->lock);
      return 0;
    }
 +  //p->trapframe -> physcial address of the trapframe [in the actual physical ram of the system xv6 is running on]
  
    // An empty user page table.
++  acquire(&p->memlock);
    p->pagetable = proc_pagetable(p);
++
 +  //we have the physical address of p->trapframe, but we don't have a pagetable for p. Thus, we will call proc_pagetable(p). This function will allocate an empty pagetable by calling kalloc(). Fill the pagetable with 0. Finally, update corresponding PTEs of p->trapframe and trampoline page with their va[in the address space of 'p']-->pa[in actual physical memory, which corresponds to kernel address space] mapping.
 +
    if(p->pagetable == 0){
      freeproc(p);
      release(&p->lock);
-@@ -142,7 +146,11 @@ found:
++    release(&p->memlock);
+     return 0;
+   }
++  else  release(&p->memlock);
  
    // Set up new context to start executing at forkret,
    // which returns to user space.
@@ -286,7 +338,77 @@ index 959b778..23edded 100644
    p->context.ra = (uint64)forkret;
    p->context.sp = p->kstack + PGSIZE;
  
-@@ -287,8 +295,12 @@ fork(void)
+@@ -158,9 +186,19 @@ freeproc(struct proc *p)
+   if(p->trapframe)
+     kfree((void*)p->trapframe);
+   p->trapframe = 0;
+-  if(p->pagetable)
+-    proc_freepagetable(p->pagetable, p->sz);
++  acquire(&p->memlock);
++  if(p->pagetable){
++    if(!p->is_thread) proc_freepagetable(p->pagetable, p->sz);
++    else{
++      uvmunmap(p->pagetable, TRAMPOLINE, 1, 0);
++      uvmunmap(p->pagetable, TRAPFRAME, 1, 0);
++      if(p->sz > 0)
++        uvmunmap(p->pagetable, 0, PGROUNDUP(p->sz)/PGSIZE, 0);
++      freewalk(p->pagetable);
++    }
++  }
+   p->pagetable = 0;
++  release(&p->memlock);
+   p->sz = 0;
+   p->pid = 0;
+   p->parent = 0;
+@@ -239,7 +277,9 @@ userinit(void)
+   
+   // allocate one user page and copy initcode's instructions
+   // and data into it.
++  acquire(&p->memlock);
+   uvmfirst(p->pagetable, initcode, sizeof(initcode));
++  release(&p->memlock);
+   p->sz = PGSIZE;
+ 
+   // prepare for the very first "return" from kernel to user.
+@@ -261,16 +301,37 @@ growproc(int n)
+ {
+   uint64 sz;
+   struct proc *p = myproc();
++  acquire(&p->memlock);
+ 
+   sz = p->sz;
+   if(n > 0){
+     if((sz = uvmalloc(p->pagetable, sz, sz + n, PTE_W)) == 0) {
++      release(&p->memlock);
+       return -1;
+     }
+   } else if(n < 0){
+     sz = uvmdealloc(p->pagetable, sz, sz + n);
+   }
+   p->sz = sz;
++  
++  struct proc *q;
++  for(q = proc; q < &proc[NPROC]; q++){
++    if(q->mem_id == p->mem_id && q != p){
++      if(n >= 0){
++        acquire(&q->memlock);
++        uvmrangemirror(p->pagetable, q->pagetable, q->sz, sz);
++        release(&q->memlock);
++      }
++      else{
++        acquire(&q->memlock);
++        uvmunmap(q->pagetable, PGROUNDUP(sz), (PGROUNDUP(q->sz)-PGROUNDUP(sz))/PGSIZE, 1);
++        release(&q->memlock);
++      }
++      q->sz = sz;
++    }
++  }
++
++  release(&p->memlock);
+   return 0;
+ }
+ 
+@@ -287,16 +348,26 @@ fork(void)
    if((np = allocproc()) == 0){
      return -1;
    }
@@ -297,10 +419,15 @@ index 959b778..23edded 100644
 -  // Copy user memory from parent to child.
 +  //Copy user memory from parent to child.
 +  //every data page from the parent process 'p' is copied and added to the child's virtual address space
++  acquire(&p->memlock);
++  acquire(&np->memlock);
    if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
      freeproc(np);
      release(&np->lock);
-@@ -297,6 +309,8 @@ fork(void)
++    release(&p->memlock);
++    release(&np->memlock);
+     return -1;
+   }
    np->sz = p->sz;
  
    // copy saved user registers.
@@ -309,89 +436,54 @@ index 959b778..23edded 100644
    *(np->trapframe) = *(p->trapframe);
  
    // Cause fork to return 0 in the child.
-@@ -325,6 +339,94 @@ fork(void)
+@@ -325,6 +396,105 @@ fork(void)
    return pid;
  }
  
 +int
-+thread_create(void (*fcn)(void*), void *arg, void *stack)
++thread_create(uint64 fcn, uint64 arg, uint64 stack)
 +{
-+  printf("proc.c/clone() : just entered this function\n");
-+
 +  int i, pid;
 +  struct proc *np;
-+  struct proc *mp = myproc();
-+  uint64 sp;  // Stack pointer
-+  uint64 ustack[2];  // For setting up stack as in exec.c
++  struct proc *p = myproc();
 +
-+  printf("proc.c/clone() : before 1st sanity check\n");
-+  // Make sure stack is page aligned
-+  if(((uint64)stack % PGSIZE) != 0) {
++  if((np = allocproc()) == 0){
 +    return -1;
 +  }
 +
-+  printf("proc.c/clone() : before 2nd sanity check\n");
-+  // Checking if stack is not less than a page
-+  if((mp->sz - (uint64)stack) < PGSIZE) {
++  acquire(&p->memlock);
++  release(&np->memlock);
++  if(uvmmirror(p->pagetable, np->pagetable, p->sz) < 0){
++    freeproc(np);
++    release(&np->lock);
++    release(&p->memlock);
++    release(&np->memlock);
 +    return -1;
 +  }
 +
-+  printf("proc.c/clone() : before 3rd sanity check\n");
-+  // Allocate process as in fork
-+  if((np = allocproc()) == 0) {
-+    return -1;
-+  }
-+
-+  printf("proc.c/clone() : before setting up process state\n");
-+  // Set up process state
-+  np->stack = stack;  // The thread's stack
-+  // np->stack_addr_to_free = ((uint64*)stack)[0];
-+  printf("proc.c/clone() : after setting up process state\n");
-+  // printf("addr to free in clone: %d : %p\n", ((uint*)stack)[0], stack);
-+  printf("proc.c/clone() : before setting up pagetable\n");
-+  np->pagetable = mp->pagetable;  // Thread should have same addr space
-+  np->sz = (uint64)stack + PGSIZE;  //Stack is one page
-+  np->parent = mp;
-+  *np->trapframe = *mp->trapframe;
-+  np->is_thread = 1;
-+
-+  // Clear a0 so that fork returns 0 in the child.
++  np->sz = p->sz;
++  *(np->trapframe) = *(p->trapframe);
 +  np->trapframe->a0 = 0;
++  np->trapframe->epc = fcn;
++  np->trapframe->sp = stack + PGSIZE;
++  np->is_thread = 1;
++  np->mem_id = p->mem_id;
 +
-+  // Set up the thread's stack
-+  sp = (uint64)stack + PGSIZE;
-+  ustack[0] = 0xffffffff;  // The fake return PC
-+  ustack[1] = (uint64)arg;	// Store arg for fnc
-+  sp -= 2 * sizeof(uint64);
++  p->trapframe->a0 = arg;
 +
-+  printf("proc.c/clone() : before copyout()\n");
-+  // Copy from kernel to user.
-+  // Copy len bytes from src to virtual address dstva in a given page table.
-+  // Return 0 on success, -1 on error.
-+  // int copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
-+  if(copyout(np->pagetable, sp, (char*)ustack, sizeof(ustack)) < 0)
-+    return -1;
-+
-+  // Set thread's stack pointer to the stack
-+  np->trapframe->sp = sp;
-+
-+  // Set thread's instruction pointer to the function
-+  np->trapframe->epc = (uint64)fcn;
-+
-+  // Same as in fork:
 +  for(i = 0; i < NOFILE; i++)
-+    if(mp->ofile[i])
-+      np->ofile[i] = filedup(mp->ofile[i]);
-+  np->cwd = idup(mp->cwd);
++    if(p->ofile[i])
++      np->ofile[i] = filedup(p->ofile[i]);
++  np->cwd = idup(p->cwd);
 +
-+  safestrcpy(np->name, mp->name, sizeof(mp->name));
++  safestrcpy(np->name, p->name, sizeof(p->name));
 +
 +  pid = np->pid;
 +
 +  release(&np->lock);
 +
 +  acquire(&wait_lock);
-+  np->parent = mp;
++  np->parent = p;
 +  release(&wait_lock);
 +
 +  acquire(&np->lock);
@@ -401,53 +493,189 @@ index 959b778..23edded 100644
 +  return pid;
 +}
 +
++int
++thread_join(int thread_id)
++{
++  struct proc *pp;
++  int havekids, pid;
++  struct proc *p = myproc();
++
++  acquire(&wait_lock);
++
++  for(;;){
++    // Scan through table looking for exited children.
++    havekids = 0;
++    for(pp = proc; pp < &proc[NPROC]; pp++){
++      if(pp->parent == p && pp->pid == thread_id){
++        // make sure the child isn't still in exit() or swtch().
++        acquire(&pp->lock);
++
++        havekids = 1;
++        if(pp->state == ZOMBIE){
++          // Found one.
++          pid = pp->pid;
++          // if(addr != 0 && copyout(p->pagetable, addr, (char *)&pp->xstate, sizeof(pp->xstate)) < 0) {
++          //   release(&pp->lock);
++          //   release(&wait_lock);
++          //   return -1;
++          // }
++          freeproc(pp);
++          release(&pp->lock);
++          release(&wait_lock);
++          return pid;
++        }
++        release(&pp->lock);
++      }
++    }
++
++    // No point waiting if we don't have any children.
++    if(!havekids || killed(p)){
++      release(&wait_lock);
++      return -1;
++    }
++    
++    // Wait for a child to exit.
++    sleep(p, &wait_lock);  //DOC: wait-sleep
++  }
++}
++
  // Pass p's abandoned children to init.
  // Caller must hold wait_lock.
  void
+@@ -340,6 +510,48 @@ reparent(struct proc *p)
+   }
+ }
+ 
++void
++thread_exit()
++{
++  struct proc *p = myproc();
++
++  if(p == initproc)
++    panic("init exiting");
++
++  // Close all open files.
++  for(int fd = 0; fd < NOFILE; fd++){
++    if(p->ofile[fd]){
++      struct file *f = p->ofile[fd];
++      fileclose(f);
++      p->ofile[fd] = 0;
++    }
++  }
++
++  begin_op();
++  iput(p->cwd);
++  end_op();
++  p->cwd = 0;
++
++  acquire(&wait_lock);
++
++  // Give any children to init.
++  reparent(p);
++
++  // Parent might be sleeping in wait().
++  wakeup(p->parent);
++  
++  acquire(&p->lock);
++
++  p->xstate = 0;
++  p->state = ZOMBIE;
++
++  release(&wait_lock);
++
++  // Jump into the scheduler, never to return.
++  sched();
++  panic("zombie exit");
++}
++
+ // Exit the current process.  Does not return.
+ // An exited process remains in the zombie state
+ // until its parent calls wait().
+@@ -408,12 +620,15 @@ wait(uint64 addr)
+         if(pp->state == ZOMBIE){
+           // Found one.
+           pid = pp->pid;
++          acquire(&p->memlock);
+           if(addr != 0 && copyout(p->pagetable, addr, (char *)&pp->xstate,
+                                   sizeof(pp->xstate)) < 0) {
+             release(&pp->lock);
+             release(&wait_lock);
++            release(&p->memlock);
+             return -1;
+           }
++          else  release(&p->memlock);
+           freeproc(pp);
+           release(&pp->lock);
+           release(&wait_lock);
+@@ -630,7 +845,9 @@ either_copyout(int user_dst, uint64 dst, void *src, uint64 len)
+ {
+   struct proc *p = myproc();
+   if(user_dst){
++    acquire(&p->memlock);
+     return copyout(p->pagetable, dst, src, len);
++    release(&p->memlock);
+   } else {
+     memmove((char *)dst, src, len);
+     return 0;
+@@ -645,7 +862,9 @@ either_copyin(void *dst, int user_src, uint64 src, uint64 len)
+ {
+   struct proc *p = myproc();
+   if(user_src){
++    acquire(&p->memlock);
+     return copyin(p->pagetable, dst, src, len);
++    release(&p->memlock);
+   } else {
+     memmove(dst, (char*)src, len);
+     return 0;
 diff --git a/kernel/proc.h b/kernel/proc.h
-index d021857..90c236a 100644
+index d021857..25022cb 100644
 --- a/kernel/proc.h
 +++ b/kernel/proc.h
-@@ -104,4 +104,8 @@ struct proc {
+@@ -104,4 +104,7 @@ struct proc {
    struct file *ofile[NOFILE];  // Open files
    struct inode *cwd;           // Current directory
    char name[16];               // Process name (debugging)
-+  int tid;
-+  void* stack;                 // Beginning of stack
-+  int is_thread;               // Whether or not this process is a thread
-+  uint64 stack_addr_to_free;      // Stack address to free. May not be aligned
++  struct spinlock memlock;	  // find places to set and release the locks 
++  int is_thread;               // if it is thread
++  int mem_id;                   // All threads will have the same physical pages with the mothrer, hence the same memory ID
  };
 diff --git a/kernel/syscall.c b/kernel/syscall.c
-index ed65409..79b3886 100644
+index ed65409..6a81db3 100644
 --- a/kernel/syscall.c
 +++ b/kernel/syscall.c
-@@ -101,6 +101,7 @@ extern uint64 sys_unlink(void);
+@@ -101,6 +101,9 @@ extern uint64 sys_unlink(void);
  extern uint64 sys_link(void);
  extern uint64 sys_mkdir(void);
  extern uint64 sys_close(void);
 +extern uint64 sys_thread_create(void);
++extern uint64 sys_thread_join(void);
++extern uint64 sys_thread_exit(void);
  
  // An array mapping syscall numbers from syscall.h
  // to the function that handles the system call.
-@@ -126,6 +127,7 @@ static uint64 (*syscalls[])(void) = {
+@@ -126,6 +129,9 @@ static uint64 (*syscalls[])(void) = {
  [SYS_link]    sys_link,
  [SYS_mkdir]   sys_mkdir,
  [SYS_close]   sys_close,
 +[SYS_thread_create]   sys_thread_create,
++[SYS_thread_join]   sys_thread_join,
++[SYS_thread_exit]   sys_thread_exit,
  };
  
  void
 diff --git a/kernel/syscall.h b/kernel/syscall.h
-index bc5f356..ab588c5 100644
+index bc5f356..d6a9cf3 100644
 --- a/kernel/syscall.h
 +++ b/kernel/syscall.h
-@@ -20,3 +20,4 @@
+@@ -20,3 +20,6 @@
  #define SYS_link   19
  #define SYS_mkdir  20
  #define SYS_close  21
 +#define SYS_thread_create  22
++#define SYS_thread_join    23
++#define SYS_thread_exit    24
 diff --git a/kernel/sysfile.c b/kernel/sysfile.c
-index 16b668c..a777333 100644
+index 16b668c..b56280a 100644
 --- a/kernel/sysfile.c
 +++ b/kernel/sysfile.c
 @@ -431,36 +431,51 @@ sys_chdir(void)
@@ -494,7 +722,7 @@ index 16b668c..a777333 100644
      argv[i] = kalloc();
      if(argv[i] == 0)
        goto bad;
-+    
++
 +    //now we are done allocating a page in kernel-address-space for argv[i], but the page is empty, we haven't fetched the argument yet. That's what we are doing next.
 +
 +    //int fetchstr(uint64 addr, char *buf, int max)
@@ -516,31 +744,38 @@ index 16b668c..a777333 100644
      kfree(argv[i]);
    return -1;
 diff --git a/kernel/sysproc.c b/kernel/sysproc.c
-index 1de184e..775a274 100644
+index 1de184e..2bddbf0 100644
 --- a/kernel/sysproc.c
 +++ b/kernel/sysproc.c
-@@ -89,3 +89,19 @@ sys_uptime(void)
+@@ -89,3 +89,26 @@ sys_uptime(void)
    release(&tickslock);
    return xticks;
  }
 +
 +uint64
 +sys_thread_create(void) {
-+  uint64 fcn;
-+  uint64 arg;
-+  uint64 stack;
-+
++  uint64 fcn, arg, stack;
 +  argaddr(0, &fcn);
 +  argaddr(1, &arg);
 +  argaddr(2, &stack);
 +
-+  printf("sysproc.c/sys_clone() : before calling clone()\n");
-+
-+  return thread_create((void*)fcn, (void*)arg, (void*)stack);
++  return thread_create(fcn, arg, stack);
 +}
 +
++uint64
++sys_thread_join(void){
++  int tid;
++  argint(0, &tid);
++  return thread_join(tid);
++}
++
++uint64
++sys_thread_exit(void){
++  thread_exit();
++  return 0;
++}
 diff --git a/kernel/vm.c b/kernel/vm.c
-index 9f69783..4fb42a8 100644
+index 9f69783..36bb18c 100644
 --- a/kernel/vm.c
 +++ b/kernel/vm.c
 @@ -302,6 +302,7 @@ uvmfree(pagetable_t pagetable, uint64 sz)
@@ -551,9 +786,67 @@ index 9f69783..4fb42a8 100644
  int
  uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
  {
+@@ -332,6 +333,57 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+   return -1;
+ }
+ 
++//Similar to uvmcopy() except that it doesn't use kalloc() i.e. doesn't allocate new physical pages
++int
++uvmmirror(pagetable_t old, pagetable_t new, uint64 sz)
++{
++  pte_t *pte;
++  uint64 pa, i;
++  uint flags;
++
++  for(i = 0; i < sz; i += PGSIZE){
++    if((pte = walk(old, i, 0)) == 0)
++      panic("uvmcopy: pte should exist");
++    if((*pte & PTE_V) == 0)
++      panic("uvmcopy: page not present");
++    pa = PTE2PA(*pte);
++    flags = PTE_FLAGS(*pte);
++    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
++      goto err;
++    }
++  }
++  return 0;
++
++ err:
++  uvmunmap(new, 0, i / PGSIZE, 1);
++  return -1;
++}
++
++int
++uvmrangemirror(pagetable_t old, pagetable_t new, uint64 sz_old, uint64 sz)
++{
++  pte_t *pte;
++  uint64 pa, i;
++  uint flags;
++
++  for(i = PGROUNDUP(sz_old); i < sz; i += PGSIZE){
++    if((pte = walk(old, i, 0)) == 0)
++      panic("uvmcopy: pte should exist");
++    if((*pte & PTE_V) == 0)
++      panic("uvmcopy: page not present");
++    pa = PTE2PA(*pte);
++    flags = PTE_FLAGS(*pte);
++    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
++      goto err;
++    }
++  }
++  return 0;
++
++ err:
++  uvmunmap(new, PGROUNDUP(sz_old), (i - PGROUNDUP(sz_old)) / PGSIZE, 1);
++  return -1;
++}
++
+ // mark a PTE invalid for user access.
+ // used by exec for the user stack guard page.
+ void
 diff --git a/user/threads.c b/user/threads.c
 new file mode 100644
-index 0000000..517bf5c
+index 0000000..13e7f39
 --- /dev/null
 +++ b/user/threads.c
 @@ -0,0 +1,68 @@
@@ -599,7 +892,7 @@ index 0000000..517bf5c
 +  
 +    printf( "Done s:%x\n", b->name);
 +
-+    // thread_exit();
++    thread_exit();
 +    return;
 +}
 +
@@ -609,8 +902,7 @@ index 0000000..517bf5c
 +  struct balance b2 = {"b2", 2800};
 + 
 +  void *s1, *s2;
-+  int thread1, thread2;
-+  // int r1, r2;
++  int thread1, thread2, r1, r2;
 +
 +  s1 = malloc(4096); // 4096 is the PGSIZE defined in kernel/riscv.h
 +  s2 = malloc(4096);
@@ -618,32 +910,37 @@ index 0000000..517bf5c
 +  thread1 = thread_create(do_work, (void*)&b1, s1);
 +  thread2 = thread_create(do_work, (void*)&b2, s2); 
 +
-+  // r1 = thread_join(thread1);
-+  // r2 = thread_join(thread2);
++  r1 = thread_join(thread1);
++  r2 = thread_join(thread2);
 +  
-+  printf("Threads finished: <%d, %d>, shared balance:%d\n", thread1, thread2, total_balance);
++  printf("Threads finished: (%d):%d, (%d):%d, shared balance:%d\n", 
++      thread1, r1, thread2, r2, total_balance);
 +
 +  exit(0);
 +}
 \ No newline at end of file
 diff --git a/user/user.h b/user/user.h
-index 4d398d5..8025131 100644
+index 4d398d5..2bfd94f 100644
 --- a/user/user.h
 +++ b/user/user.h
-@@ -22,6 +22,7 @@ int getpid(void);
+@@ -22,6 +22,9 @@ int getpid(void);
  char* sbrk(int);
  int sleep(int);
  int uptime(void);
-+int thread_create(void(*fcn)(void*), void *arg, void *stack);
++int thread_create(void(*fcn)(void*), void *arg, void*stack);
++int thread_join(int thread_id);
++void thread_exit(void);
  
  // ulib.c
  int stat(const char*, struct stat*);
 diff --git a/user/usys.pl b/user/usys.pl
-index 01e426e..da5ea2f 100755
+index 01e426e..a334aa7 100755
 --- a/user/usys.pl
 +++ b/user/usys.pl
-@@ -36,3 +36,4 @@ entry("getpid");
+@@ -36,3 +36,6 @@ entry("getpid");
  entry("sbrk");
  entry("sleep");
  entry("uptime");
 +entry("thread_create");
++entry("thread_join");
++entry("thread_exit");
