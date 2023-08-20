@@ -1,24 +1,35 @@
 diff --git a/.vscode/settings.json b/.vscode/settings.json
 new file mode 100644
-index 0000000..aa48e88
+index 0000000..21be27d
 --- /dev/null
 +++ b/.vscode/settings.json
-@@ -0,0 +1,5 @@
+@@ -0,0 +1,11 @@
 +{
 +    "files.associations": {
-+        "assert.h": "c"
++        "assert.h": "c",
++        "defs.h": "c",
++        "riscv.h": "c",
++        "memlayout.h": "c",
++        "thread_spinlock.h": "c",
++        "param.h": "c",
++        "proc.h": "c"
 +    }
 +}
 \ No newline at end of file
 diff --git a/Makefile b/Makefile
-index 39a99d7..151b273 100644
+index 39a99d7..b3038ca 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -132,6 +132,7 @@ UPROGS=\
+@@ -132,6 +132,12 @@ UPROGS=\
  	$U/_grind\
  	$U/_wc\
  	$U/_zombie\
 +	$U/_threads\
++	$U/_thread_spinlock\
++	$U/_thread_mutex\
++	$U/_producer_consumer\
++	$U/_thread_sem\
++	$U/_thread_cv\
  
  fs.img: mkfs/mkfs README $(UPROGS)
  	mkfs/mkfs fs.img README $(UPROGS)
@@ -262,7 +273,7 @@ index e18bbb6..4d585af 100644
      iunlockput(ip);
      end_op();
 diff --git a/kernel/proc.c b/kernel/proc.c
-index 959b778..c0e7044 100644
+index 959b778..41e2739 100644
 --- a/kernel/proc.c
 +++ b/kernel/proc.c
 @@ -13,7 +13,9 @@ struct proc proc[NPROC];
@@ -283,7 +294,7 @@ index 959b778..c0e7044 100644
 +allocmemid()
 +{
 +  int mem_id;
-+  
++
 +  acquire(&mem_id_lock);
 +  mem_id = next_mem_id;
 +  next_mem_id = next_mem_id + 1;
@@ -386,7 +397,7 @@ index 959b778..c0e7044 100644
      sz = uvmdealloc(p->pagetable, sz, sz + n);
    }
    p->sz = sz;
-+  
++
 +  struct proc *q;
 +  for(q = proc; q < &proc[NPROC]; q++){
 +    if(q->mem_id == p->mem_id && q != p){
@@ -533,7 +544,7 @@ index 959b778..c0e7044 100644
 +      release(&wait_lock);
 +      return -1;
 +    }
-+    
++
 +    // Wait for a child to exit.
 +    sleep(p, &wait_lock);  //DOC: wait-sleep
 +  }
@@ -575,7 +586,7 @@ index 959b778..c0e7044 100644
 +
 +  // Parent might be sleeping in wait().
 +  wakeup(p->parent);
-+  
++
 +  acquire(&p->lock);
 +
 +  p->xstate = 0;
@@ -607,7 +618,39 @@ index 959b778..c0e7044 100644
            freeproc(pp);
            release(&pp->lock);
            release(&wait_lock);
-@@ -630,7 +845,9 @@ either_copyout(int user_dst, uint64 dst, void *src, uint64 len)
+@@ -561,6 +776,31 @@ sleep(void *chan, struct spinlock *lk)
+   acquire(lk);
+ }
+ 
++void
++cond_sleep(struct spinlock *lk)
++{
++  struct proc *p = myproc();
++  
++  // Must acquire p->lock in order to
++  // change p->state and then call sched.
++  // Once we hold p->lock, we can be
++  // guaranteed that we won't miss any wakeup
++  // (wakeup locks p->lock),
++  // so it's okay to release lk.
++
++  acquire(&p->lock);  //DOC: sleeplock1
++  release(lk);
++
++  // Go to sleep.
++  p->state = SLEEPING;
++
++  sched();
++
++  // Reacquire original lock.
++  release(&p->lock);
++  // acquire(lk);
++}
++
+ // Wake up all processes sleeping on chan.
+ // Must be called without any p->lock.
+ void
+@@ -630,7 +870,9 @@ either_copyout(int user_dst, uint64 dst, void *src, uint64 len)
  {
    struct proc *p = myproc();
    if(user_dst){
@@ -617,7 +660,7 @@ index 959b778..c0e7044 100644
    } else {
      memmove((char *)dst, src, len);
      return 0;
-@@ -645,7 +862,9 @@ either_copyin(void *dst, int user_src, uint64 src, uint64 len)
+@@ -645,7 +887,9 @@ either_copyin(void *dst, int user_src, uint64 src, uint64 len)
  {
    struct proc *p = myproc();
    if(user_src){
@@ -628,14 +671,14 @@ index 959b778..c0e7044 100644
      memmove(dst, (char*)src, len);
      return 0;
 diff --git a/kernel/proc.h b/kernel/proc.h
-index d021857..25022cb 100644
+index d021857..7bd3414 100644
 --- a/kernel/proc.h
 +++ b/kernel/proc.h
 @@ -104,4 +104,7 @@ struct proc {
    struct file *ofile[NOFILE];  // Open files
    struct inode *cwd;           // Current directory
    char name[16];               // Process name (debugging)
-+  struct spinlock memlock;	  // find places to set and release the locks 
++  struct spinlock memlock;	  // find places to set and release the locks
 +  int is_thread;               // if it is thread
 +  int mem_id;                   // All threads will have the same physical pages with the mothrer, hence the same memory ID
  };
@@ -844,9 +887,443 @@ index 9f69783..36bb18c 100644
  // mark a PTE invalid for user access.
  // used by exec for the user stack guard page.
  void
+diff --git a/user/producer_consumer.c b/user/producer_consumer.c
+new file mode 100644
+index 0000000..91156eb
+--- /dev/null
++++ b/user/producer_consumer.c
+@@ -0,0 +1,110 @@
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "user/user.h"
++
++struct queue{
++	int arr[16];
++	int front;
++	int rear;
++	int size;
++};
++queue(struct queue q)
++{
++    q.front = 0;
++    q.rear = 0;
++    q.size = 0;
++}
++void push(struct queue q, int x)
++{
++    q.arr[q.rear] = x;
++    q.rear = (q.rear+1)%16;
++    q.size++;
++}
++int front(struct queue q)
++{
++    if(q.size==0)
++        return -1;
++    return q.arr[q.front];
++}
++void pop(struct queue q)
++{
++    if(q.size==0) return;
++    q.front = (q.front+1)%16;
++    q.size--;
++}
++struct queue q;
++// a mutex object lock 
++// a semaphore object empty
++// a semaphore object full
++
++void init_semaphore()
++{
++	// initialize mutex lock
++	// initialize semaphore empty with 5
++	// initialize semaphore full with 0
++
++}
++
++void * ProducerFunc(void * arg)
++{	
++	printf("%s\n",(char*)arg);
++	int i;
++	for(i=1;i<=10;i++)
++	{
++		// wait for semphore empty
++
++		// wait for mutex lock
++		
++		sleep(1);	
++		push(q, i);
++		printf("producer produced item %d\n",i);
++		
++		// unlock mutex lock	
++		// post semaphore full
++	}
++}
++
++void * ConsumerFunc(void * arg)
++{
++	printf("%s\n",(char*)arg);
++	int i;
++	for(i=1;i<=10;i++)
++	{	
++		// wait for semphore full
++		// wait for mutex lock
++ 		
++			
++		sleep(1);
++		int item = front(q);
++		pop(q);
++		printf("consumer consumed item %d\n",item);	
++
++
++		// unlock mutex lock
++		// post semaphore empty		
++	}
++}
++
++int main(void)
++{	
++	
++	init_semaphore();
++	
++	char * message1 = "i am producer";
++	char * message2 = "i am consumer";
++
++
++	void *s1, *s2;
++  	int thread1, thread2, r1, r2;
++
++  	s1 = malloc(4096);
++  	s2 = malloc(4096);
++
++  	thread1 = thread_create(ProducerFunc, (void*)message1, s1);
++  	thread2 = thread_create(ConsumerFunc, (void*)message2, s2); 
++
++  	r1 = thread_join(thread1);
++  	r2 = thread_join(thread2);	
++	
++	exit(0);
++}
+diff --git a/user/thread_cv.c b/user/thread_cv.c
+new file mode 100644
+index 0000000..c498466
+--- /dev/null
++++ b/user/thread_cv.c
+@@ -0,0 +1,36 @@
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "kernel/proc.h"
++#include "kernel/param.h"
++#include "kernel/memlayout.h"
++#include "kernel/riscv.h"
++#include "kernel/spinlock.h"
++#include "kernel/defs.h"
++#include "user/user.h"
++#include "user/thread_cv.h"
++
++struct queue q;
++
++//  ----------- pseudo code --------
++//  void wait (condition *cv, mutex *mx) 
++//   {
++//     mutex_acquire(&c->listLock);  /* protect the queue */
++//     enqueue (&c->next, &c->prev, thr_self()); /* enqueue */
++//     mutex_release (&c->listLock); /* we're done with the list */
++  
++//     /* The suspend and release_mutex() operation should be atomic */
++//     release_mutex (mx));
++//     thr_suspend (self);  /* Sleep 'til someone wakes us */
++  
++//     mutex_acquire (mx); /* Woke up -- our turn, get resource lock */
++  
++//     return;
++//   }
++
++void
++cond_wait(struct condition *cv, struct spinlock *lk)
++{
++    acquire(&cv->mx);
++
++    release(&cv->mx);
++}
+\ No newline at end of file
+diff --git a/user/thread_cv.h b/user/thread_cv.h
+new file mode 100644
+index 0000000..e5576a6
+--- /dev/null
++++ b/user/thread_cv.h
+@@ -0,0 +1,36 @@
++struct queue{
++	int arr[16];
++	int front;
++	int rear;
++	int size;
++};
++
++queue(struct queue q)
++{
++    q.front = 0;
++    q.rear = 0;
++    q.size = 0;
++}
++void push(struct queue q, int x)
++{
++    q.arr[q.rear] = x;
++    q.rear = (q.rear+1)%16;
++    q.size++;
++}
++int front(struct queue q)
++{
++    if(q.size==0)
++        return -1;
++    return q.arr[q.front];
++}
++void pop(struct queue q)
++{
++    if(q.size==0) return;
++    q.front = (q.front+1)%16;
++    q.size--;
++}
++
++struct condition {
++    struct queue Q;
++    struct spinlock mx; /*protects queue; This semaphore should be a spin-lock since it will only be held for very short periods of time. */
++};
+\ No newline at end of file
+diff --git a/user/thread_mutex.c b/user/thread_mutex.c
+new file mode 100644
+index 0000000..d87caf8
+--- /dev/null
++++ b/user/thread_mutex.c
+@@ -0,0 +1,86 @@
++// Mutual exclusion spin locks.
++// initialize the mutex to the correct initial state (void thread_mutex_init(struct thread_mutex *m))
++// a function to acquire a mutex (void thread_mutex_lock(struct thread_mutex *m))
++// a function to release it void thread_mutex_unlock(struct thread_mutex *m)
++
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "kernel/proc.h"
++#include "kernel/param.h"
++#include "kernel/memlayout.h"
++#include "kernel/riscv.h"
++#include "user/user.h"
++#include "user/thread_mutex.h"
++
++void
++thread_mutex_init(struct thread_mutex *m, char *name)
++{
++  m->name = name;
++  m->locked = 0;
++  m->p = 0;
++}
++
++// Acquire the lock.
++// Loops (spins) until the lock is acquired.
++void
++thread_mutex_lock(struct thread_mutex *m)
++{
++//   push_off(); // disable interrupts to avoid deadlock.
++  if(thread_holding_mutex(m))
++    panic("thread_mutex_lock");
++
++  // On RISC-V, sync_lock_test_and_set turns into an atomic swap:
++  //   a5 = 1
++  //   s1 = &m->locked
++  //   amoswap.w.aq a5, a5, (s1)
++  while(__sync_lock_test_and_set(&m->locked, 1) != 0)
++    sleep(1);
++
++  // Tell the C compiler and the processor to not move loads or stores
++  // past this point, to ensure that the critical section's memory
++  // references happen strictly after the lock is acquired.
++  // On RISC-V, this emits a fence instruction.
++  __sync_synchronize();
++
++  // Record info about lock acquisition for holding() and debugging.
++  m->p = myproc();
++}
++
++// Release the lock.
++void
++thread_mutex_unlock(struct thread_mutex *m)
++{
++  if(!thread_holding_mutex(m))
++    panic("thread_mutex_unlock");
++
++  m->p = 0;
++
++  // Tell the C compiler and the CPU to not move loads or stores
++  // past this point, to ensure that all the stores in the critical
++  // section are visible to other CPUs before the lock is released,
++  // and that loads in the critical section occur strictly before
++  // the lock is released.
++  // On RISC-V, this emits a fence instruction.
++  __sync_synchronize();
++
++  // Release the lock, equivalent to m->locked = 0.
++  // This code doesn't use a C assignment, since the C standard
++  // implies that an assignment might be implemented with
++  // multiple store instructions.
++  // On RISC-V, sync_lock_release turns into an atomic swap:
++  //   s1 = &m->locked
++  //   amoswap.w zero, zero, (s1)
++  __sync_lock_release(&m->locked);
++
++//   pop_off();
++}
++
++// Check whether this cpu is holding the lock.
++// Interrupts must be off.
++int
++thread_holding_mutex(struct thread_mutex *m)
++{
++  int r;
++  r = (m->locked && m->p == getpid());
++  return r;
++}
+diff --git a/user/thread_mutex.h b/user/thread_mutex.h
+new file mode 100644
+index 0000000..079d8c9
+--- /dev/null
++++ b/user/thread_mutex.h
+@@ -0,0 +1,9 @@
++// Mutual exclusion lock.
++struct thread_mutex {
++  uint8 locked;       // Is the lock held?
++
++  // For debugging:
++  char *name;        // Name of lock.
++  struct proc *p;   // The process holding the lock.
++};
++
+diff --git a/user/thread_sem.c b/user/thread_sem.c
+new file mode 100644
+index 0000000..1cb9924
+--- /dev/null
++++ b/user/thread_sem.c
+@@ -0,0 +1,8 @@
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "kernel/proc.h"
++#include "kernel/param.h"
++#include "kernel/memlayout.h"
++#include "kernel/riscv.h"
++#include "user/user.h"
++#include "user/thread_mutex.h"
+\ No newline at end of file
+diff --git a/user/thread_sem.h b/user/thread_sem.h
+new file mode 100644
+index 0000000..e69de29
+diff --git a/user/thread_spinlock.c b/user/thread_spinlock.c
+new file mode 100644
+index 0000000..a9264eb
+--- /dev/null
++++ b/user/thread_spinlock.c
+@@ -0,0 +1,86 @@
++// Mutual exclusion spin locks.
++// initialize the lock to the correct initial state (void thread_spin_init(struct thread_spinlock *lk))
++// a function to acquire a lock (void thread_spin_lock(struct thread_spinlock *lk))
++// a function to release it void thread_spin_unlock(struct thread_spinlock *lk)
++
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "kernel/proc.h"
++#include "kernel/param.h"
++#include "kernel/memlayout.h"
++#include "kernel/riscv.h"
++#include "user/user.h"
++#include "user/thread_spinlock.h"
++
++void
++thread_spin_init(struct thread_spinlock *lk, char *name)
++{
++  lk->name = name;
++  lk->locked = 0;
++  lk->p = 0;
++}
++
++// Acquire the lock.
++// Loops (spins) until the lock is acquired.
++void
++thread_spin_lock(struct thread_spinlock *lk)
++{
++//   push_off(); // disable interrupts to avoid deadlock.
++  if(thread_holding(lk))
++    panic("thread_spin_lock");
++
++  // On RISC-V, sync_lock_test_and_set turns into an atomic swap:
++  //   a5 = 1
++  //   s1 = &lk->locked
++  //   amoswap.w.aq a5, a5, (s1)
++  while(__sync_lock_test_and_set(&lk->locked, 1) != 0)
++    ;
++
++  // Tell the C compiler and the processor to not move loads or stores
++  // past this point, to ensure that the critical section's memory
++  // references happen strictly after the lock is acquired.
++  // On RISC-V, this emits a fence instruction.
++  __sync_synchronize();
++
++  // Record info about lock acquisition for holding() and debugging.
++  lk->p = myproc();
++}
++
++// Release the lock.
++void
++thread_spin_unlock(struct thread_spinlock *lk)
++{
++  if(!thread_holding(lk))
++    panic("thread_spin_unlock");
++
++  lk->p = 0;
++
++  // Tell the C compiler and the CPU to not move loads or stores
++  // past this point, to ensure that all the stores in the critical
++  // section are visible to other CPUs before the lock is released,
++  // and that loads in the critical section occur strictly before
++  // the lock is released.
++  // On RISC-V, this emits a fence instruction.
++  __sync_synchronize();
++
++  // Release the lock, equivalent to lk->locked = 0.
++  // This code doesn't use a C assignment, since the C standard
++  // implies that an assignment might be implemented with
++  // multiple store instructions.
++  // On RISC-V, sync_lock_release turns into an atomic swap:
++  //   s1 = &lk->locked
++  //   amoswap.w zero, zero, (s1)
++  __sync_lock_release(&lk->locked);
++
++//   pop_off();
++}
++
++// Check whether this cpu is holding the lock.
++// Interrupts must be off.
++int
++thread_holding(struct thread_spinlock *lk)
++{
++  int r;
++  r = (lk->locked && lk->p == getpid());
++  return r;
++}
+diff --git a/user/thread_spinlock.h b/user/thread_spinlock.h
+new file mode 100644
+index 0000000..14b1e17
+--- /dev/null
++++ b/user/thread_spinlock.h
+@@ -0,0 +1,9 @@
++// Mutual exclusion lock.
++struct thread_spinlock {
++  uint8 locked;       // Is the lock held?
++
++  // For debugging:
++  char *name;        // Name of lock.
++  struct proc *p;   // The process holding the lock.
++};
++
 diff --git a/user/threads.c b/user/threads.c
 new file mode 100644
-index 0000000..13e7f39
+index 0000000..f2fcf6d
 --- /dev/null
 +++ b/user/threads.c
 @@ -0,0 +1,68 @@
@@ -862,22 +1339,22 @@ index 0000000..13e7f39
 +volatile int total_balance = 0;
 +
 +volatile unsigned int delay (unsigned int d) {
-+   unsigned int i; 
++   unsigned int i;
 +   for (i = 0; i < d; i++) {
 +       __asm volatile( "nop" ::: );
 +   }
 +
-+   return i;   
++   return i;
 +}
 +
 +void do_work(void *arg){
-+    int i; 
++    int i;
 +    int old;
-+   
-+    struct balance *b = (struct balance*) arg; 
++
++    struct balance *b = (struct balance*) arg;
 +    printf( "Starting do_work: s:%s\n", b->name);
 +
-+    for (i = 0; i < b->amount; i++) { 
++    for (i = 0; i < b->amount; i++) {
 +        // lock and mlock will be implemented by you.
 +         // thread_spin_lock(&lock);
 +         // thread_mutex_lock(&mlock);
@@ -889,7 +1366,7 @@ index 0000000..13e7f39
 +         // thread_mutex_lock(&mlock);
 +
 +    }
-+  
++
 +    printf( "Done s:%x\n", b->name);
 +
 +    thread_exit();
@@ -900,7 +1377,7 @@ index 0000000..13e7f39
 +
 +  struct balance b1 = {"b1", 3200};
 +  struct balance b2 = {"b2", 2800};
-+ 
++
 +  void *s1, *s2;
 +  int thread1, thread2, r1, r2;
 +
@@ -908,12 +1385,12 @@ index 0000000..13e7f39
 +  s2 = malloc(4096);
 +
 +  thread1 = thread_create(do_work, (void*)&b1, s1);
-+  thread2 = thread_create(do_work, (void*)&b2, s2); 
++  thread2 = thread_create(do_work, (void*)&b2, s2);
 +
 +  r1 = thread_join(thread1);
 +  r2 = thread_join(thread2);
-+  
-+  printf("Threads finished: (%d):%d, (%d):%d, shared balance:%d\n", 
++
++  printf("Threads finished: (%d):%d, (%d):%d, shared balance:%d\n",
 +      thread1, r1, thread2, r2, total_balance);
 +
 +  exit(0);
