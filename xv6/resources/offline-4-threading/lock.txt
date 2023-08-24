@@ -30,6 +30,11 @@ Conditionals {
 
     We'll need to make our own copy of sleep(). Drop all references to p->chan, we don't need it.
         comment out the acquire(lk) line at the end, the lock re-acquiring will happen in the user space.
+		
+	Let's assume our version of sleep is release_sleep. In the pseudocode given in the link, they called
+		release_mutex (mx));
+		thr_suspend (self);
+	We need to replace these two lines with a call to release_sleep, like: release_sleep(mx->locked)
 
     We could take a pointer to the lock as an input to the system call calling our sleep function
         (to use as lk), but the problem is that we can't directly modify user-space variables from the kernel space,
@@ -51,7 +56,8 @@ Conditionals {
             we are essentially doing the same thing done in the release() function in spinlock.c,
             just in a more roundabout way.
 
-    If you are keeping track of pid, remember to set mutex->pid to 0 in the userspace, before calling release_sleep().
+    If you are keeping track of pid, remember to set mutex->pid to 0 in the userspace, before calling release_sleep(),
+		just like we did while releasing spinlocks and mutexes.
 
     It is the user's responsibility to handle spurious wakeups.
 
