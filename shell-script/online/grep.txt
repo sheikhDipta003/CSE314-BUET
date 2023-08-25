@@ -1,0 +1,30 @@
+ 2005  man grep
+ 2006  grep is README.md 
+ 2007  grep -vc is README.md 
+ 2008  grep -c is README.md 
+ 2009  grep -c open README.md 
+ 2010  grep open README.md 
+ 2011  man grep
+ 2028  ls -l1 & grep is README.md
+ 2029  ls -l1 & grep for for_loop.sh 
+ 2031  ls -l1 & grep -c for for_loop.sh 
+ 2049  ls | grep *.txt
+ 2051  ls -l | grep *.txt
+ 2052  grep *.txt | ls
+ 2053  grep *.txt | ls | cat > changeext.txt
+ 2061  grep file foo.xt
+ 2062  grep file foo.txtx
+ 2063  grep file foo.txt
+ 2065  man grep
+    if [[ -f "$file" && $(file "$file" | grep -q "ASCII text") ]]; then         line_count=$(wc -l "$file")
+ 2074  for file in "$all_files"; do if [[ -f "$file" && $(file "$file" | grep -q "ASCII text") ]]; then echo "$(wc -l "$file")"; done
+ 2075  for file in "$all_files"; do if [[ -f "$file" && $(file "$file" | grep -q "ASCII text") ]]; then echo "$(wc -l "$file")";
+ 2076  for file in "$all_files"; do if [[ -f "$file" && $(file "$file" | grep -q "ASCII text") ]]; then echo "$(wc -l "$file")"; fi done
+ 2084  grep "ASCII text" $type
+ 2085  grep ASCII text $type
+ 2086  grep lazy lazy_dog.txt 
+ 2087  file "lazy_dog.txt" | grep "ASCII text"
+ 2089  file "lazy_dog.txt" | grep "ASCII text" | wc --lines
+ 2092  file "script.sh" | grep "ASCII text" | wc --lines
+ 2099  file "output_dir/wSEL" | grep "ASCII text" | wc --lines
+ 2139  history | grep 'grep' > grep.txt
