@@ -284,7 +284,7 @@ index e18bbb6..4d585af 100644
      iunlockput(ip);
      end_op();
 diff --git a/kernel/proc.c b/kernel/proc.c
-index 959b778..faadb4a 100644
+index 959b778..e21bbc4 100644
 --- a/kernel/proc.c
 +++ b/kernel/proc.c
 @@ -13,7 +13,9 @@ struct proc proc[NPROC];
@@ -395,7 +395,7 @@ index 959b778..faadb4a 100644
 +
 +  struct proc *q;
 +  for(q = proc; q < &proc[NPROC]; q++){
-+    if(q->mem_id == p->mem_id && q->pid != p->pid){
++    if(q->mem_id == p->mem_id && q->is_thread && q->pid != p->pid){
 +      if(n >= 0){
 +        uvmrangemirror(p->pagetable, q->pagetable, q->sz, sz);
 +      }
@@ -607,7 +607,7 @@ index 959b778..faadb4a 100644
 +  for(p = proc; p < &proc[NPROC]; p++) {
 +    if(p != myproc()){
 +      acquire(&p->lock);
-+      if(p->state == SLEEPING && p->pid == thread_id) {
++      if(p->state == SLEEPING && p->is_thread && p->pid == thread_id) {
 +        p->state = RUNNABLE;
 +      }
 +      release(&p->lock);
